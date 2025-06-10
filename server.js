@@ -10,6 +10,15 @@ const OrganizationDashboardRoutes = require('./routes/dashboard/index');
 // Load environment variables
 dotenv.config();
 
+// Log environment variables (excluding sensitive data)
+console.log('Environment:', {
+  NODE_ENV: process.env.NODE_ENV,
+  PORT: process.env.PORT,
+  DATABASE_URL: process.env.DATABASE_URL ? 'Configured' : 'Not configured',
+  JWT_SECRET: process.env.JWT_SECRET ? 'Configured' : 'Not configured',
+  SMTP_HOST: process.env.SMTP_HOST ? 'Configured' : 'Not configured'
+});
+
 const PORT = process.env.PORT || 5000; 
 
 const app = express();
@@ -45,6 +54,7 @@ app.use('/api/dashboard', OrganizationDashboardRoutes);
 app.get("/", async (req, res) => {
   try {
     const result = await pool.query('SELECT NOW()');
+    console.log('Database connection successful:', result.rows[0]);
     res.json({
       message: "API is running...",
       timestamp: result.rows[0].now
