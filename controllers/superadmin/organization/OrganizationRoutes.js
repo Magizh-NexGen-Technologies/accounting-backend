@@ -230,6 +230,7 @@ const postOrganization = async (req, res) => {
     
     // Generate unique identifier for the organization
     const organizationId = await generateOrganizationId();
+    console.log('Generated organization ID:', organizationId);
     
     // Create a slug from the organization name
     const slug = name.toLowerCase()
@@ -240,10 +241,11 @@ const postOrganization = async (req, res) => {
     // Generate a UUID for database name
     const uuid = uuidv4().split('-')[0];
     const organizationDb = `${slug}-${uuid}`;
+    console.log('Generated organization database name:', organizationDb);
     
     // Define modules based on plan
     let userLimit = 10;
-    let enabledModules = []; 
+    let enabledModules = [];
     
     switch (planId) {
       case 'basic':
@@ -279,10 +281,13 @@ const postOrganization = async (req, res) => {
       role: 'admin'
     };
     
+    console.log('Creating organization database...');
     // Create the organization database and store organization data
     await createOrganizationDB(organizationDb, orgData);
+    console.log('Organization database created successfully');
     
     // Insert organization record into main database
+    console.log('Inserting organization record into main database...');
     const result = await client.query(
       `INSERT INTO organizations 
         (organization_id, name, slug, organization_db, admin_email, admin_name, phone_number,
@@ -292,9 +297,12 @@ const postOrganization = async (req, res) => {
       [organizationId, name, slug, organizationDb, adminEmail, adminName, phoneNumber || null,
        planId, userLimit, JSON.stringify(enabledModules), 'admin']
     );
+    console.log('Organization record inserted successfully');
 
     // Connect to the organization database
+    console.log('Connecting to organization database...');
     orgPool = await connectToOrganizationDB(organizationDb);
+    console.log('Connected to organization database successfully');
 
     // Create admin user for the organization
     const adminData = {
@@ -305,8 +313,10 @@ const postOrganization = async (req, res) => {
       organization_id: organizationId
     };
 
+    console.log('Creating organization admin...');
     // Create admin in both databases
     const admin = await createOrganizationAdmin(orgPool, adminData);
+    console.log('Organization admin created successfully');
 
     return res.status(201).json({
       success: true,
@@ -318,6 +328,24 @@ const postOrganization = async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating organization:', error);
+    
+    // Check for specific database errors
+    if (error.code === '42501') {
+      return res.status(500).json({
+        success: false,
+        message: 'Database permission error. Please check database user permissions.',
+        error: error.message
+      });
+    }
+    
+    if (error.code === '42P04') {
+      return res.status(500).json({
+        success: false,
+        message: 'Database already exists. Please try again.',
+        error: error.message
+      });
+    }
+    
     return res.status(500).json({
       success: false,
       message: 'Failed to create organization',
