@@ -41,7 +41,7 @@ BEGIN
     NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE plpgsql;
 
 -- Create trigger to automatically update updated_at (if it doesn't exist)
 DO $$ 

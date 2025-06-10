@@ -21,7 +21,7 @@ BEGIN
     RETURN NEW;
 END;
 $$ language 'plpgsql';
-
+ 
 -- Create trigger if not exists
 DO $$
 BEGIN

@@ -20,7 +20,7 @@ const getSmtpSettings = async () => {
     client.release();
   }
 };
-
+ 
 /**
  * Create email transporter with SMTP settings
  * @param {object} smtpSettings - SMTP configuration

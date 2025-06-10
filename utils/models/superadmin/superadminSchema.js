@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS superadmins (
     email VARCHAR(255) NOT NULL UNIQUE,
     phone_number VARCHAR(20) DEFAULT NULL,
     password VARCHAR(255) DEFAULT NULL,
-    role VARCHAR(50) DEFAULT 'admin',
+    role VARCHAR(50) DEFAULT 'superadmin',
     tax_id VARCHAR(50) DEFAULT NULL,
     address TEXT DEFAULT NULL,
     city VARCHAR(100) DEFAULT NULL,
@@ -27,7 +27,7 @@ BEGIN
     NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END; 
-$$ language 'plpgsql';
+$$ LANGUAGE plpgsql;
 
 -- Create trigger if not exists
 DO $$ 

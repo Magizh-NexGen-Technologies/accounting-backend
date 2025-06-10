@@ -41,237 +41,87 @@ const login = async (req, res) => {
   const client = await pool.connect();
   
   try {
-    // Initialize required schemas
-    await client.query(LoginSchema);
-    await client.query(SuperAdminSchema);
-
     const { identifier, password } = req.body;
     
-    console.log('Login attempt for identifier:', identifier);
-    
-    // Validate required fields
+    // Input validation
     if (!identifier || !password) {
-      console.log('Missing identifier or password');
       return res.status(400).json({
         success: false,
         message: 'Email/Phone number and password are required'
       });
     }
 
-    // Validate identifier format and determine login method
-    const loginMethod = isValidEmail(identifier) ? 'email' : 'phone';
-    if (!isValidEmail(identifier) && !isValidPhone(identifier)) {
-      return res.status(400).json({
+    // Check login attempts
+    const loginAttempts = await checkLoginAttempts(identifier);
+    if (loginAttempts >= 5) {
+      return res.status(429).json({
         success: false,
-        message: 'Please enter a valid email address or phone number'
+        message: 'Too many login attempts. Please try again later.'
       });
     }
-    
-    // First, check if user exists in superadmins table
-    console.log('Checking superadmins table for:', identifier);
-    const superadminResult = await client.query(
-      'SELECT * FROM superadmins WHERE email = $1 OR phone_number = $1',
-      [identifier]
-    );
-    
-    console.log('Superadmin query result:', superadminResult.rows.length);
-    
-    if (superadminResult.rows.length > 0) {
-      const superadmin = superadminResult.rows[0];
-      console.log('Found superadmin:', { id: superadmin.id, email: superadmin.email, hasPassword: !!superadmin.password });
-      
-      // Check if superadmin has a password set
-      if (!superadmin.password) {
-        console.log('Superadmin has no password set');
-        return res.status(401).json({
-          success: false,
-          message: 'Account not configured. Please complete registration first.'
-        });
-      }
-      
-      // Verify password
-      console.log('Verifying password for superadmin');
-      const isValidPassword = await bcrypt.compare(password, superadmin.password);
-      console.log('Password verification result:', isValidPassword);
-      
-      if (!isValidPassword) {
-        console.log('Invalid password for superadmin');
-        return res.status(401).json({
-          success: false,
-          message: 'Invalid credentials'
-        });
-      }
-      
-      // Check if superadmin is active
-      if (!superadmin.is_active) {
-        console.log('Superadmin account is inactive');
-        return res.status(403).json({
-          success: false,
-          message: 'Your account is inactive. Please contact the administrator.'
-        });
-      }
-      
-      console.log('Generating JWT token for superadmin');
-      // Generate JWT token for superadmin
-      const token = jwt.sign(
-        {
-          userId: superadmin.id,
-          email: superadmin.email,
-          role: 'superadmin',
-          organizationId: 'system',
-          organizationDb: 'system'
-        },
-        JWT_SECRET,
-        { expiresIn: TOKEN_EXPIRY }
-      );
-      
-      // Create login session
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 24); // 24 hours from now
-      
-      console.log('Creating login session for superadmin');
-      await client.query(
-        `INSERT INTO login_sessions (user_id, organization_id, token, role, login_method, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [superadmin.id, 'system', token, 'superadmin', loginMethod, expiresAt]
-      );
-      
-      // Update last login timestamp in superadmins table
-      console.log('Updating last login timestamp for superadmin');
-      await client.query(
-        'UPDATE superadmins SET last_login = CURRENT_TIMESTAMP WHERE id = $1',
-        [superadmin.id]
-      );
-      
-      // Remove sensitive data
-      const { password: _, ...safeSuperadmin } = superadmin;
-      
-      console.log('Superadmin login successful');
-      return res.status(200).json({
-        success: true,
-        message: 'Login successful',
-        data: {
-          user: {
-            ...safeSuperadmin,
-            role: 'superadmin'
-          },
-          organization: {
-            id: 'system',
-            name: 'System Administration',
-            db: 'system',
-            subscription_plan: 'unlimited',
-            enabled_modules: ['all']
-          },
-          token
-        }
-      });
-    }
-    
-    // If not found in superadmins, check organization_admins table
-    console.log('Checking organization_admins table for:', identifier);
-    const userResult = await client.query(
-      'SELECT * FROM organization_admins WHERE admin_email = $1 OR phone_number = $1',
-      [identifier]
-    );
-    
-    if (userResult.rows.length === 0) {
-      console.log('User not found in either table');
+
+    // Find user (superadmin or organization admin)
+    const user = await findUser(identifier);
+    if (!user) {
+      await incrementLoginAttempts(identifier);
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
       });
     }
-    
-    const user = userResult.rows[0];
-    console.log('Found organization admin:', { id: user.id, admin_email: user.admin_email });
-    
+
     // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
-      console.log('Invalid password for organization admin');
+      await incrementLoginAttempts(identifier);
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
       });
     }
-    
-    // Check if user is active
+
+    // Check account status
     if (!user.is_active) {
       return res.status(403).json({
         success: false,
-        message: 'Your account is inactive. Please contact the administrator.'
+        message: 'Your account is inactive'
       });
     }
-    
-    // Get organization details
-    const orgResult = await client.query(
-      'SELECT * FROM organizations WHERE organization_id = $1',
-      [user.organization_id]
-    );
-    
-    if (orgResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Organization not found'
-      });
-    }
-    
-    const organization = orgResult.rows[0];
-    
-    // Generate JWT token
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        email: user.admin_email,
-        role: user.role,
-        organizationId: user.organization_id,
-        organizationDb: organization.organization_db
-      },
-      JWT_SECRET,
-      { expiresIn: TOKEN_EXPIRY }
-    );
-    
-    // Create login session
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 24); // 24 hours from now
-    
-    await client.query(
-      `INSERT INTO login_sessions (user_id, organization_id, token, role, login_method, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [user.id, user.organization_id, token, user.role, loginMethod, expiresAt]
-    );
-    
-    // Update last login timestamp
-    await client.query(
-      'UPDATE organization_admins SET last_login = CURRENT_TIMESTAMP WHERE id = $1',
-      [user.id]
-    );
-    
-    // Remove sensitive data
-    const { password: _, ...safeUser } = user;
-    
-    console.log('Organization admin login successful');
-    return res.status(200).json({
+
+    // Generate tokens
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    // Store session
+    await createSession(user.id, accessToken, refreshToken);
+
+    // Update last login
+    await updateLastLogin(user.id);
+
+    // Clear login attempts
+    await clearLoginAttempts(identifier);
+
+    res.json({
       success: true,
-      message: 'Login successful',
       data: {
-        user: safeUser,
-        organization: {
-          id: organization.organization_id,
-          name: organization.name,
-          db: organization.organization_db,
-          subscription_plan: organization.subscription_plan,
-          enabled_modules: organization.enabled_modules
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          organization: user.organization
         },
-        token
+        tokens: {
+          access: accessToken,
+          refresh: refreshToken
+        }
       }
     });
   } catch (error) {
     console.error('Login error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
-      message: 'Login failed',
-      error: error.message
+      message: 'Login failed'
     });
   } finally {
     client.release();

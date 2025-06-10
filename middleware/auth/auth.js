@@ -1,6 +1,8 @@
 const jwt = require('jsonwebtoken');
 const pool = require('../../utils/config/connectDB');
 const { connectToOrganizationDB } = require('../../utils/config/connectOrganization');
+const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
 
 /**
  * Middleware to authenticate JWT token
@@ -8,47 +10,59 @@ const { connectToOrganizationDB } = require('../../utils/config/connectOrganizat
  * @param {object} res - Express response object
  * @param {function} next - Express next function
  */
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  console.log('Auth header:', authHeader);
-
-  if (!authHeader) {
-    console.error('No authorization header found');
-    return res.status(401).json({
-      success: false,
-      message: 'Access token is required'
-    });
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts
+  message: {
+    success: false,
+    message: 'Too many login attempts, please try again after 15 minutes'
   }
+});
 
-  const token = authHeader.split(' ')[1];
-  console.log('Extracted token:', token);
-
-  if (!token) {
-    console.error('No token found in authorization header');
-    return res.status(401).json({
-      success: false,
-      message: 'Access token is required'
-    });
-  }
-
+const authenticateToken = async (req, res, next) => {
   try {
-    console.log('Verifying token with secret:', process.env.JWT_SECRET);
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('Decoded token:', decoded);
+    const authHeader = req.headers['authorization'];
     
-    // Add additional validation for token expiry
+    if (!authHeader) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    const token = authHeader.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required'
+      });
+    }
+
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    // Check token expiry
     if (decoded.exp && Date.now() >= decoded.exp * 1000) {
-      console.error('Token has expired');
       return res.status(401).json({
         success: false,
         message: 'Token has expired'
       });
     }
-    
+
+    // Check if token is blacklisted
+    const isBlacklisted = await checkTokenBlacklist(token);
+    if (isBlacklisted) {
+      return res.status(401).json({
+        success: false,
+        message: 'Token is no longer valid'
+      });
+    }
+
+    // Add user info to request
     req.user = decoded;
     next();
   } catch (error) {
-    console.error('Token verification error:', error);
     return res.status(403).json({
       success: false,
       message: 'Invalid or expired token'
@@ -62,14 +76,40 @@ const authenticateToken = (req, res, next) => {
  * @param {object} res - Express response object
  * @param {function} next - Express next function
  */
-const isAdmin = (req, res, next) => {
-  if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'superadmin')) {
-    return res.status(403).json({
+const isAdmin = async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required'
+      });
+    }
+
+    const { userId, role } = req.user;
+    
+    // Check user status
+    const userStatus = await checkUserStatus(userId, role);
+    if (!userStatus.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account is not active'
+      });
+    }
+
+    if (role !== 'admin' && role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Admin access required'
+      });
+    }
+
+    next();
+  } catch (error) {
+    return res.status(500).json({
       success: false,
-      message: 'Admin access required'
+      message: 'Error verifying admin status'
     });
   }
-  next();
 };
 
 /**

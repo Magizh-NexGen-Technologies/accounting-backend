@@ -18,8 +18,8 @@ RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
-END;
-$$ language 'plpgsql';
+END; 
+$$ LANGUAGE plpgsql;
 
 -- Create trigger if not exists
 DO $$

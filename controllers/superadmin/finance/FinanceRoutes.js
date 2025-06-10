@@ -9,7 +9,7 @@ const initializeSchema = async (client) => {
   } catch (error) {
     console.error("Error initializing finance schema:", error);
     throw error;
-  }
+  } 
 };
 
 // Generate a financial year code from dates

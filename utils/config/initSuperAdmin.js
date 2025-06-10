@@ -12,7 +12,7 @@ const DEFAULT_SUPERADMIN = {
   state: null,
   postal_code: null,
   country: null,
-  role: 'admin',
+  role: 'superadmin',
   is_active: true
 };
  

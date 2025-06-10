@@ -13,7 +13,7 @@ const getSmtpSettings = async (req, res) => {
       ORDER BY created_at DESC 
       LIMIT 1
     `);
-    
+     
     if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
