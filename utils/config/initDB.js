@@ -1,5 +1,6 @@
 const pool = require('./connectDB');
 const initSuperAdmins = require('./initSuperAdmin');
+const initSMTP = require('./initSMTP');
 const paymentGatewaySchema = require('../models/superadmin/paymentgateway/PaymentGatewaySchema');
 const subscriptionSchema = require('../models/superadmin/subscriptionplan/SubscriptionSchema');
 const SmtpSettingsSchema = require('../models/superadmin/smtp/smtpSchema'); 
@@ -23,6 +24,7 @@ async function initializeDatabase(retryCount = 0) {
      
     // Create all required tables
     await client.query(superadminSchema);
+    await initSMTP();
     await client.query(paymentGatewaySchema); 
     await client.query(subscriptionSchema);
     await client.query(SmtpSettingsSchema);
