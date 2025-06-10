@@ -35,6 +35,9 @@ const connectToOrganizationDB = async (orgDbName) => {
   // Create a new connection pool for this organization
   const orgPool = new Pool({
     connectionString: orgConnectionString,
+    ssl: {
+      rejectUnauthorized: false // Required for DigitalOcean PostgreSQL
+    }
   });
  
   try {
