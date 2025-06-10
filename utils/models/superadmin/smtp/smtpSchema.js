@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS smtp_settings (
     id SERIAL PRIMARY KEY,
     host VARCHAR(255) NOT NULL,
     port INTEGER NOT NULL DEFAULT 587,
-    username VARCHAR(255) NOT NULL,
+    username VARCHAR(255) NOT NULL, 
     password VARCHAR(255) NOT NULL,
     from_email VARCHAR(255) NOT NULL,
     from_name VARCHAR(255) NOT NULL DEFAULT 'System Notifications',
