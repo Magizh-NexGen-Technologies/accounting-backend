@@ -28,9 +28,9 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 
         FROM pg_trigger 
-        WHERE tgname = 'update_smtp_settings_updated_at'
+        WHERE tgname = 'update_dashboard_smtp_settings_updated_at'
     ) THEN
-        CREATE TRIGGER update_smtp_settings_updated_at
+        CREATE TRIGGER update_dashboard_smtp_settings_updated_at
         BEFORE UPDATE ON smtp_settings
         FOR EACH ROW
         EXECUTE FUNCTION update_updated_at_column();
