@@ -3,7 +3,6 @@ const initSuperAdmins = require('./initSuperAdmin');
 const initSMTP = require('./initSMTP');
 const paymentGatewaySchema = require('../models/superadmin/paymentgateway/PaymentGatewaySchema');
 const subscriptionSchema = require('../models/superadmin/subscriptionplan/SubscriptionSchema');
-const SmtpSettingsSchema = require('../models/superadmin/smtp/smtpSchema'); 
 const brandSettingsSchema = require('../models/superadmin/brand/BrandSchema');
 const freetrialSchema = require('../models/superadmin/freetrial/FreeTrialSchema');
 const financeSettingsSchema = require('../models/superadmin/finance/financeSchema');
@@ -11,6 +10,7 @@ const organizationSchema = require('../models/superadmin/organization/organizati
 const superadminSchema = require('../models/superadmin/superadminSchema');
 const organizationAdminSchema = require('../models/superadmin/organization/organizationAdminSchema');
 const OTPSchema = require('../models/auth/OTPSchema');
+
 async function initializeDatabase(retryCount = 0) {
   const MAX_RETRIES = 3; 
   const client = await pool.connect();
@@ -27,7 +27,6 @@ async function initializeDatabase(retryCount = 0) {
     await initSMTP();
     await client.query(paymentGatewaySchema); 
     await client.query(subscriptionSchema);
-    await client.query(SmtpSettingsSchema);
     await client.query(brandSettingsSchema);
     await client.query(freetrialSchema);
     await client.query(financeSettingsSchema);
