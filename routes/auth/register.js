@@ -16,8 +16,8 @@ router.post('/check-email', async (req, res) => {
   } catch (error) {
     console.error('Error in email eligibility check route:', error);
     res.status(500).json({ 
-      success: false,
-      message: 'Internal server error during email eligibility check',
+      success: false, 
+      message: 'Internal server err or during email eligibility check',
       error: error.message
     });
   }

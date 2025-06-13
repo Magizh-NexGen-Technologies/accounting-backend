@@ -11,7 +11,72 @@ const TOKEN_EXPIRY = '24h';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
- 
+
+// Login attempt management
+const checkLoginAttempts = async (identifier) => {
+  const client = await pool.connect();
+  try {
+    // First ensure table exists
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS login_attempts (
+        id SERIAL PRIMARY KEY,
+        identifier VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    const result = await client.query(
+      'SELECT COUNT(*) FROM login_attempts WHERE identifier = $1 AND created_at > NOW() - INTERVAL \'15 minutes\'',
+      [identifier]
+    );
+    return parseInt(result.rows[0].count);
+  } catch (error) {
+    console.error('Error checking login attempts:', error);
+    return 0;
+  } finally {
+    client.release();
+  }
+};
+
+const incrementLoginAttempts = async (identifier) => {
+  const client = await pool.connect();
+  try {
+    // First ensure table exists
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS login_attempts (
+        id SERIAL PRIMARY KEY,
+        identifier VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(
+      'INSERT INTO login_attempts (identifier) VALUES ($1)',
+      [identifier]
+    );
+    console.log(`Login attempt recorded for ${identifier}`);
+  } catch (error) {
+    console.error('Error incrementing login attempts:', error);
+  } finally {
+    client.release();
+  }
+};
+
+const clearLoginAttempts = async (identifier) => {
+  const client = await pool.connect();
+  try {
+    await client.query(
+      'DELETE FROM login_attempts WHERE identifier = $1',
+      [identifier]
+    );
+    console.log(`Login attempts cleared for ${identifier}`);
+  } catch (error) {
+    console.error('Error clearing login attempts:', error);
+  } finally {
+    client.release();
+  }
+};
+
 /**
  * Validate email format
  * @param {string} email - Email to validate
@@ -23,13 +88,65 @@ const isValidEmail = (email) => {
 };
 
 /**
- * Validate phone number format
- * @param {string} phone - Phone number to validate
- * @returns {boolean} Whether phone number is valid
+ * Find user by email in either superadmins or organization_admins table
+ * @param {string} identifier - Email to find user
+ * @returns {object|null} User object or null if not found
  */
-const isValidPhone = (phone) => {
-  const phoneRegex = /^\+?[\d\s-]{10,}$/;
-  return phoneRegex.test(phone);
+const findUser = async (identifier) => {
+  const client = await pool.connect();
+  try {
+    // Check superadmins table
+    const superadminResult = await client.query(
+      'SELECT * FROM superadmins WHERE email = $1',
+      [identifier]
+    );
+
+    if (superadminResult.rows.length > 0) {
+      return {
+        ...superadminResult.rows[0],
+        role: 'superadmin'
+      };
+    }
+
+    // Check organization_admins table
+    const orgAdminResult = await client.query(
+      'SELECT * FROM organization_admins WHERE admin_email = $1',
+      [identifier]
+    );
+
+    if (orgAdminResult.rows.length > 0) {
+      return {
+        ...orgAdminResult.rows[0],
+        role: 'admin'
+      };
+    }
+
+    return null;
+  } finally {
+    client.release();
+  }
+};
+
+const createSession = async (userId, token, role, organizationId) => {
+  const client = await pool.connect();
+  try {
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 24); // 24 hours expiry
+
+    await client.query(
+      `INSERT INTO login_sessions (
+        user_id, 
+        organization_id, 
+        token, 
+        role, 
+        login_method,
+        expires_at
+      ) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [userId, organizationId, token, role, 'email', expiresAt]
+    );
+  } finally {
+    client.release();
+  }
 };
 
 /**
@@ -47,7 +164,15 @@ const login = async (req, res) => {
     if (!identifier || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Email/Phone number and password are required'
+        message: 'Email and password are required'
+      });
+    }
+
+    // Validate email format
+    if (!isValidEmail(identifier)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid email format'
       });
     }
 
@@ -88,15 +213,28 @@ const login = async (req, res) => {
       });
     }
 
-    // Generate tokens
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
+    // Generate JWT token
+    const token = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email || user.admin_email,
+        role: user.role,
+        organizationId: user.organization_id || 'system'
+      },
+      JWT_SECRET,
+      { expiresIn: TOKEN_EXPIRY }
+    );
 
-    // Store session
-    await createSession(user.id, accessToken, refreshToken);
+    // Create login session
+    await createSession(
+      user.id,
+      token,
+      user.role,
+      user.organization_id || 'system'
+    );
 
     // Update last login
-    await updateLastLogin(user.id);
+    await updateLastLogin(user.id, user.role);
 
     // Clear login attempts
     await clearLoginAttempts(identifier);
@@ -107,14 +245,11 @@ const login = async (req, res) => {
         user: {
           id: user.id,
           name: user.name,
-          email: user.email,
+          email: user.email || user.admin_email,
           role: user.role,
-          organization: user.organization
+          organization: user.organization_id
         },
-        tokens: {
-          access: accessToken,
-          refresh: refreshToken
-        }
+        token
       }
     });
   } catch (error) {
@@ -382,7 +517,7 @@ const googleLogin = async (req, res) => {
       data: {
         user: safeUser,
         organization: {
-          id: organization.organization_id,
+          organization_id: organization.organization_id,
           name: organization.name,
           db: organization.organization_db,
           subscription_plan: organization.subscription_plan,
@@ -403,8 +538,95 @@ const googleLogin = async (req, res) => {
   }
 };
 
+/**
+ * Verify user credentials without creating a session
+ * @param {object} req - Express request object
+ * @param {object} res - Express response object
+ */
+const verifyCredentials = async (req, res) => {
+  try {
+    const { identifier, password } = req.body;
+
+    if (!identifier || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
+    }
+
+    if (!isValidEmail(identifier)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid email format'
+      });
+    }
+
+    // Check login attempts
+    const attempts = await checkLoginAttempts(identifier);
+    console.log(`Current login attempts for ${identifier}: ${attempts}`);
+
+    if (attempts >= 5) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many login attempts. Please try again after 15 minutes.'
+      });
+    }
+
+    // Find user
+    const user = await findUser(identifier);
+    if (!user) {
+      await incrementLoginAttempts(identifier);
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials'
+      });
+    }
+
+    // Verify password
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+      await incrementLoginAttempts(identifier);
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials'
+      });
+    }
+
+    // Check if account is active
+    if (!user.is_active) {
+      return res.status(403).json({
+        success: false,
+        message: 'Account is inactive'
+      });
+    }
+
+    // Clear login attempts on successful verification
+    await clearLoginAttempts(identifier);
+
+    // Return user data without creating session
+    return res.status(200).json({
+      success: true,
+      message: 'Credentials verified successfully',
+      data: {
+        id: user.id,
+        email: user.email || user.admin_email,
+        role: user.role,
+        organization_id: user.organization_id
+      }
+    });
+
+  } catch (error) {
+    console.error('Credentials verification error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
 module.exports = {
   login,
   logout,
-  googleLogin
+  googleLogin,
+  verifyCredentials
 };

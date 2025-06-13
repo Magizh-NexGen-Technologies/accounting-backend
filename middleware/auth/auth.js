@@ -8,7 +8,7 @@ const helmet = require('helmet');
  * Middleware to authenticate JWT token
  * @param {object} req - Express request object
  * @param {object} res - Express response object
- * @param {function} next - Express next function
+ * @param {function} next - Express next function 
  */
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
