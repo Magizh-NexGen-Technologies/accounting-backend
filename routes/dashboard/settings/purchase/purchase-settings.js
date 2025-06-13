@@ -16,7 +16,7 @@ router.get('/', getPurchaseSettings);
 router.put('/', putLatestPurchaseSettings);
 router.delete('/:id', deletePurchaseSettings);
 
-// Number generation routes
+// Number generation routes 
 router.post('/generate-po', generatePONumber);
 router.post('/generate-bill', generateBillNumber);
 

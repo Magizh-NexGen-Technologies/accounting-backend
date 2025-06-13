@@ -5,4 +5,4 @@ const { googleLogin } = require('../../controllers/auth/LoginControllers');
 // Google OAuth login route
 router.post('/', googleLogin);
 
-module.exports = router;  
+module.exports = router;   

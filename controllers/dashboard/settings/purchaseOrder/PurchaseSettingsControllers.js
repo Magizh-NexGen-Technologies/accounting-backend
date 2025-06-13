@@ -65,9 +65,6 @@ const getPurchaseSettings = async (req, res) => {
           financial_year_start_date: null,
           financial_year_end_date: null,
           financial_year_code: "",
-          default_payment_term: "",
-          default_purchase_tax: null,
-          tax_rates: [],
           vendor_categories: [],
           selected_category: "",
           counters: []
@@ -105,9 +102,6 @@ const postPurchaseSettings = async (req, res) => {
       bill_prefix,
       financial_year_start_date,
       financial_year_end_date,
-      default_purchase_tax = null,
-      tax_rates = [],
-      payment_terms = [],
       vendor_categories = [],
       selected_category = ''
     } = req.body;
@@ -134,17 +128,14 @@ const postPurchaseSettings = async (req, res) => {
       const { rows } = await client.query(
         `INSERT INTO purchase_settings
           (po_prefix, bill_prefix, financial_year_start_date, financial_year_end_date, financial_year_code,
-           default_purchase_tax, tax_rates, payment_terms, vendor_categories, selected_category)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+           vendor_categories, selected_category)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
         [
           po_prefix,
           bill_prefix,
           financial_year_start_date,
           financial_year_end_date,
           financial_year_code,
-          default_purchase_tax,
-          tax_rates,
-          payment_terms,
           vendor_categories,
           selected_category
         ]
@@ -205,9 +196,6 @@ const putLatestPurchaseSettings = async (req, res) => {
       bill_prefix,
       financial_year_start_date,
       financial_year_end_date,
-      default_purchase_tax,
-      tax_rates,
-      payment_terms,
       vendor_categories,
       selected_category
     } = req.body;
@@ -220,17 +208,14 @@ const putLatestPurchaseSettings = async (req, res) => {
       const updateResult = await client.query(
         `UPDATE purchase_settings SET
           po_prefix=$1, bill_prefix=$2, financial_year_start_date=$3, financial_year_end_date=$4, financial_year_code=$5,
-          default_purchase_tax=$6, tax_rates=$7, payment_terms=$8, vendor_categories=$9, selected_category=$10, updated_at=NOW()
-         WHERE id=$11 RETURNING *`,
+          vendor_categories=$6, selected_category=$7, updated_at=NOW()
+         WHERE id=$8 RETURNING *`,
         [
           po_prefix,
           bill_prefix,
           financial_year_start_date,
           financial_year_end_date,
-          financial_year_code,
-          default_purchase_tax,
-          tax_rates,
-          payment_terms,
+          financial_year_code, 
           vendor_categories,
           selected_category,
           latest.id
@@ -269,7 +254,7 @@ const putLatestPurchaseSettings = async (req, res) => {
 
 const deletePurchaseSettings = async (req, res) => {
   const { id, organizationId } = req.params;
-  const { taxRate, vendorCategory, paymentTerm } = req.body;
+  const { vendorCategory } = req.body;
   let pool, client;
   try {
     const orgData = await getOrganizationData(organizationId);
@@ -279,7 +264,7 @@ const deletePurchaseSettings = async (req, res) => {
     pool = await connectToOrganizationDB(orgData.organization_db);
     client = await pool.connect();
     await initializeSchema(client);
-    if (id && !taxRate && !vendorCategory && !paymentTerm) {
+    if (id && !vendorCategory) {
       const delResult = await client.query(
         "DELETE FROM purchase_settings WHERE id = $1 RETURNING *",
         [id]
@@ -296,34 +281,22 @@ const deletePurchaseSettings = async (req, res) => {
       return res.status(404).json({ success: false, message: "No settings found" });
     }
     const latest = rows[0];
-    let updatedTaxRates = latest.tax_rates;
     let updatedCategories = latest.vendor_categories;
-    let updatedPaymentTerms = latest.payment_terms;
     let changed = false;
-    if (taxRate !== undefined) {
-      updatedTaxRates = updatedTaxRates.filter(r => r !== taxRate);
-      changed = true;
-    }
     if (vendorCategory !== undefined) {
       updatedCategories = updatedCategories.filter(c => c !== vendorCategory);
       changed = true;
     }
-    if (paymentTerm !== undefined) {
-      updatedPaymentTerms = updatedPaymentTerms.filter(t => t !== paymentTerm);
-      changed = true;
-    }
     if (!changed) {
-      return res.status(400).json({ success: false, message: "No taxRate, vendorCategory, or paymentTerm provided" });
+      return res.status(400).json({ success: false, message: "No vendorCategory provided" });
     }
     const updateResult = await client.query(
       `UPDATE purchase_settings 
-       SET tax_rates = $1, 
-           vendor_categories = $2, 
-           payment_terms = $3, 
+       SET vendor_categories = $1, 
            updated_at = NOW() 
-       WHERE id = $4 
+       WHERE id = $2 
        RETURNING *`,
-      [updatedTaxRates, updatedCategories, updatedPaymentTerms, latest.id]
+      [updatedCategories, latest.id]
     );
     res.json({ success: true, message: "Updated settings", data: updateResult.rows[0] });
   } catch (err) {

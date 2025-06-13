@@ -93,20 +93,23 @@ const postVendors = async (req, res) => {
       category,
       workPhone,
       mobile,
-      doorNo,
-      city,
-      state,
-      district,
-      country,
+      gstin,
+      openingBalance,
+      billingAddress,
+      shippingAddress,
+      sameAsBilling,
       bankDetails,
-      status
+      status,
+      paymentTerms,
+      businessType,
+      tdsApplicable,
     } = req.body;
 
     const orgData = await getOrganizationData(organizationId);
     if (!orgData) {
       return res.status(404).json({
         success: false,
-        message: 'Organization not found'
+        message: 'Organization not found' 
       });
     }
 
@@ -114,20 +117,21 @@ const postVendors = async (req, res) => {
     client = await pool.connect();
     await initializeSchema(client);
 
-    // Generate unique vendor ID
     const vendorId = await generateVendorId(client);
 
     const { rows } = await client.query(
       `INSERT INTO vendors (
         vendor_id, first_name, last_name, company_name, display_name, email, 
-        category, work_phone, mobile, door_no, city, state, 
-        district, country, bank_details, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        category, work_phone, mobile, gstin, opening_balance, billing_address,
+        shipping_address, same_as_billing, bank_details, status, payment_terms,
+        business_type, tds_applicable
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
       RETURNING *`,
       [
         vendorId, firstName, lastName, companyName, displayName, email,
-        category, workPhone, mobile, doorNo, city, state,
-        district, country, bankDetails, status
+        category, workPhone, mobile, gstin, openingBalance, billingAddress,
+        shippingAddress, sameAsBilling, bankDetails, status, paymentTerms,
+        businessType, tdsApplicable,
       ]
     );
 
@@ -161,13 +165,16 @@ const putVendors = async (req, res) => {
       category,
       workPhone,
       mobile,
-      doorNo,
-      city,
-      state,
-      district,
-      country,
+      gstin,
+      openingBalance,
+      billingAddress,
+      shippingAddress,
+      sameAsBilling,
       bankDetails,
-      status
+      status,
+      paymentTerms,
+      businessType,
+      tdsApplicable,
     } = req.body;
 
     const orgData = await getOrganizationData(organizationId);
@@ -185,15 +192,18 @@ const putVendors = async (req, res) => {
     const { rows } = await client.query(
       `UPDATE vendors SET
         first_name = $1, last_name = $2, company_name = $3, display_name = $4,
-        email = $5, category = $6, work_phone = $7, mobile = $8, door_no = $9,
-        city = $10, state = $11, district = $12, country = $13,
-        bank_details = $14, status = $15, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $16
+        email = $5, category = $6, work_phone = $7, mobile = $8, gstin = $9,
+        opening_balance = $10, billing_address = $11, shipping_address = $12,
+        same_as_billing = $13, bank_details = $14, status = $15,
+        payment_terms = $16, business_type = $17, tds_applicable = $18,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $19
       RETURNING *`,
       [
         firstName, lastName, companyName, displayName, email,
-        category, workPhone, mobile, doorNo, city, state,
-        district, country, bankDetails, status, id
+        category, workPhone, mobile, gstin, openingBalance,
+        billingAddress, shippingAddress, sameAsBilling, bankDetails,
+        status, paymentTerms, businessType, tdsApplicable, id
       ]
     );
 
@@ -219,12 +229,65 @@ const putVendors = async (req, res) => {
   }
 };
 
+const getVendorById = async (req, res) => {
+  const { vendorId } = req.params;
+  const organizationId = req.params.organizationId;
+  let pool, client;
+
+  try {
+    const orgData = await getOrganizationData(organizationId);
+    if (!orgData) {
+      return res.status(404).json({
+        success: false,
+        message: 'Organization not found'
+      });
+    }
+
+    pool = await connectToOrganizationDB(orgData.organization_db);
+    client = await pool.connect();
+    await initializeSchema(client);
+
+    const { rows } = await client.query(
+      `SELECT * FROM vendors WHERE vendor_id = $1`,
+      [vendorId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Vendor not found'
+      });
+    }
+
+    // Convert balance to number
+    const processedRow = {
+      ...rows[0],
+      balance: rows[0].balance !== null ? Number(rows[0].balance) : 0
+    };
+
+    res.json({
+      success: true,
+      data: processedRow
+    });
+  } catch (err) {
+    console.error('Error in getVendorById:', err);
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  } finally {
+    if (client) client.release();
+  }
+};
+
 module.exports = {
   getVendors,
   postVendors,
-  putVendors
+  putVendors,
+  getVendorById
 };
 
 
 
 
+ 

@@ -3,6 +3,17 @@ const pool = require('../../utils/config/connectDB');
 const { sendEmail } = require('../../utils/email/emailService');
 const { getOrganizationData } = require('../../utils/config/connectOrganization');
 // const { sendSMS } = require('../../utils/sms/smsService');
+const jwt = require('jsonwebtoken');
+
+/**
+ * Validate email format
+ * @param {string} email - Email to validate
+ * @returns {boolean} Whether email is valid
+ */
+const isValidEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+};
 
 const generateOTP = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
@@ -10,13 +21,21 @@ const generateOTP = () => {
 
 const sendOTP = async (req, res) => {
     const client = await pool.connect();
-    try {
-        const { identifier } = req.body; // identifier can be email or phone
+    try { 
+        const { identifier } = req.body; // identifier is now only email
         
         if (!identifier) {
             return res.status(400).json({
                 success: false,
-                message: 'Email or phone number is required'
+                message: 'Email is required'
+            });
+        }
+
+        // Validate email format
+        if (!isValidEmail(identifier)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid email format'
             });
         }
 
@@ -48,48 +67,34 @@ const sendOTP = async (req, res) => {
             [identifier, otp, expiryTime]
         );
 
-        console.log('Stored OTP:', { identifier, otp, expiryTime }); // Debug log
-
-        // Check if identifier is email or phone
-        const isEmail = identifier.includes('@');
-        
-        if (isEmail) {
-            try {
-                // Send OTP via email
-                await sendEmail({
-                    to: identifier,
-                    subject: 'Your Login Verification Code',
-                    text: `Your verification code is: ${otp}. This code will expire in 10 minutes.`,
-                    html: `
-                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                            <h2 style="color: #333;">Your Verification Code</h2>
-                            <p>Your verification code is:</p>
-                            <div style="background-color: #f4f4f4; padding: 10px; text-align: center; font-size: 24px; letter-spacing: 5px; margin: 20px 0;">
-                                <strong>${otp}</strong>
-                            </div>
-                            <p>This code will expire in 10 minutes.</p>
-                            <p>If you didn't request this code, please ignore this email.</p>
+        // Send OTP via email
+        try {
+            await sendEmail({
+                to: identifier,
+                subject: 'Your Login Verification Code',
+                text: `Your verification code is: ${otp}. This code will expire in 10 minutes.`,
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                        <h2 style="color: #333;">Your Verification Code</h2>
+                        <p>Your verification code is:</p>
+                        <div style="background-color: #f4f4f4; padding: 10px; text-align: center; font-size: 24px; letter-spacing: 5px; margin: 20px 0;">
+                            <strong>${otp}</strong>
                         </div>
-                    `
-                });
+                        <p>This code will expire in 10 minutes.</p>
+                        <p>If you didn't request this code, please ignore this email.</p>
+                    </div>
+                `
+            });
 
-                res.json({
-                    success: true,
-                    message: 'OTP sent successfully to your email'
-                });
-            } catch (emailError) {
-                console.error('Error sending email:', emailError);
-                return res.status(500).json({
-                    success: false,
-                    message: 'Failed to send OTP email. Please try again.'
-                });
-            }
-        } else {
-            // For now, just return success for phone numbers
-            // TODO: Implement SMS service
             res.json({
                 success: true,
-                message: 'OTP generated successfully (SMS service not implemented)'
+                message: 'OTP sent successfully to your email'
+            });
+        } catch (emailError) {
+            console.error('Error sending email:', emailError);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to send OTP email. Please try again.'
             });
         }
 
@@ -104,12 +109,32 @@ const sendOTP = async (req, res) => {
     }
 };
 
+const createSession = async (userId, token, role, organizationId) => {
+  const client = await pool.connect();
+  try {
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 24); // 24 hours expiry
+
+    await client.query(
+      `INSERT INTO login_sessions (
+        user_id, 
+        organization_id, 
+        token, 
+        role, 
+        login_method,
+        expires_at
+      ) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [userId, organizationId, token, role, 'otp', expiresAt]
+    );
+  } finally {
+    client.release();
+  }
+};
+
 const verifyOTP = async (req, res) => {
     const client = await pool.connect();
     try {
         const { identifier, otp } = req.body;
-
-        console.log('Verifying OTP:', { identifier, otp }); // Debug log
 
         if (!identifier || !otp) {
             return res.status(400).json({
@@ -130,7 +155,6 @@ const verifyOTP = async (req, res) => {
         );
 
         if (otpResult.rows.length === 0) {
-            console.log('No valid OTP found for identifier:', identifier); // Debug log
             return res.status(400).json({
                 success: false,
                 message: 'No valid OTP found. Please request a new OTP.'
@@ -140,7 +164,6 @@ const verifyOTP = async (req, res) => {
         const storedOTP = otpResult.rows[0];
 
         if (storedOTP.otp !== otp) {
-            console.log('Invalid OTP for identifier:', identifier); // Debug log
             return res.status(400).json({
                 success: false,
                 message: 'Invalid OTP. Please try again.'
@@ -169,23 +192,12 @@ const verifyOTP = async (req, res) => {
         if (superadminResult.rows.length > 0) {
             user = superadminResult.rows[0];
             user.role = 'superadmin';
-            organization = null; // Superadmins don't belong to an organization
+            organization = null;
         } else if (orgAdminResult.rows.length > 0) {
             user = orgAdminResult.rows[0];
             user.role = 'admin';
-            
-            // Get organization data using the new getOrganizationData function
             organization = await getOrganizationData(user.organization_id);
-
-            if (!organization) {
-                console.log('Organization not found for user:', user.id); // Debug log
-                return res.status(404).json({
-                    success: false,
-                    message: 'Organization not found'
-                });
-            }
         } else {
-            console.log('User not found for identifier:', identifier); // Debug log
             return res.status(404).json({
                 success: false,
                 message: 'User not found'
@@ -195,13 +207,38 @@ const verifyOTP = async (req, res) => {
         // Generate JWT token
         const token = crypto.randomBytes(32).toString('hex');
 
-        console.log('OTP verification successful for user:', user.id); // Debug log
+        // Create login session
+        await createSession(
+            user.id,
+            token,
+            user.role,
+            user.organization_id || 'system'
+        );
+
+        // Update last login
+        if (user.role === 'superadmin') {
+            await client.query(
+                'UPDATE superadmins SET last_login = CURRENT_TIMESTAMP WHERE id = $1',
+                [user.id]
+            );
+        } else {
+            await client.query(
+                'UPDATE organization_admins SET last_login = CURRENT_TIMESTAMP WHERE id = $1',
+                [user.id]
+            );
+        }
 
         res.json({
             success: true,
             message: 'OTP verified successfully',
             data: {
-                user,
+                user: {
+                    id: user.id,
+                    name: user.name,
+                    email: user.email || user.admin_email,
+                    role: user.role,
+                    organization: user.organization_id
+                },
                 organization,
                 token
             }
