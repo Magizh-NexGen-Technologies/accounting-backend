@@ -10,6 +10,7 @@ const organizationSchema = require('../models/superadmin/organization/organizati
 const superadminSchema = require('../models/superadmin/superadminSchema');
 const organizationAdminSchema = require('../models/superadmin/organization/organizationAdminSchema');
 const OTPSchema = require('../models/auth/OTPSchema');
+const LoginSchema = require('../models/auth/LoginSchema');
 
 async function initializeDatabase(retryCount = 0) {
   const MAX_RETRIES = 3; 
@@ -33,6 +34,7 @@ async function initializeDatabase(retryCount = 0) {
     await client.query(organizationSchema);
     await client.query(organizationAdminSchema);
     await client.query(OTPSchema);
+    await client.query(LoginSchema);
     await client.query('COMMIT');
     console.log('✅ Database tables initialized successfully');
 
