@@ -52,3 +52,9 @@ uploads/*
 
 # Optional eslint cache
 .eslintcache
+
+# Do NOT ignore public folder and its contents
+!public/
+!public/**/*
+!public/branding-image/
+!public/branding-image/.gitkeep
