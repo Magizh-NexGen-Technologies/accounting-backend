@@ -5,11 +5,20 @@ const path = require('path');
 const fs = require('fs');
 const { getBrand, postBrand, putBrand } = require('../../../controllers/superadmin/brand/BrandRoutes');
 
-// Create uploads directory if it doesn't exist
-const uploadDir = path.join(__dirname, '../../../uploads');
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
+// Create branding-image directory in public folder
+const brandingImageDir = path.join(__dirname, '../../../public/branding-image');
+if (!fs.existsSync(brandingImageDir)) {
+  fs.mkdirSync(brandingImageDir, { recursive: true });
 }
+
+// Cache control middleware for branding images
+const brandingCacheControl = (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  res.set('Surrogate-Control', 'no-store');
+  next();
+};
 
 // Allowed file types
 const MIME_TYPES = {
@@ -24,12 +33,14 @@ const MIME_TYPES = {
 
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        cb(null, uploadDir);
+        // Save directly to public/branding-image
+        cb(null, brandingImageDir);
     },
     filename: function (req, file, cb) {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         const extension = MIME_TYPES[file.mimetype];
-        cb(null, `${file.fieldname}-${uniqueSuffix}.${extension}`);
+        const filename = `${file.fieldname}-${uniqueSuffix}.${extension}`;
+        cb(null, filename);
     }
 });
 
@@ -72,6 +83,9 @@ const handleUpload = (req, res, next) => {
         next();
     });
 };
+
+// Apply cache control middleware to all branding routes
+router.use(brandingCacheControl);
 
 router.get('/', getBrand);
 router.post('/', handleUpload, postBrand);

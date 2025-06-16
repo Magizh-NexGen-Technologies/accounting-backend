@@ -44,8 +44,8 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from uploads directory using absolute path
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve static files from public directory only
+app.use(express.static(path.join(__dirname, 'public')));
 
 app.use("/api", routes);
 app.use('/api/dashboard', OrganizationDashboardRoutes);
@@ -73,7 +73,7 @@ const startServer = async () => {
   try {
     // Initialize database tables
     await initializeDatabase();
-    console.log('✅ Database connection successful');
+    console.log('✅ Database connection successful'); 
 
     app.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);

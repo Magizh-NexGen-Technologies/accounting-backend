@@ -3,10 +3,11 @@ const path = require('path');
 const fs = require('fs').promises;
 const brandSettingsSchema = require('../../../utils/models/superadmin/brand/BrandSchema');
 
+// Helper function to delete old files
 const deleteOldFile = async (filePath) => {
     if (!filePath) return;
     try {
-        const absolutePath = path.join(__dirname, '../../../', filePath);
+        const absolutePath = path.join(__dirname, '../../../public', filePath);
         await fs.access(absolutePath);
         await fs.unlink(absolutePath);
     } catch (error) {
@@ -14,7 +15,7 @@ const deleteOldFile = async (filePath) => {
     }
 };
 
-exports.getBrand = async (req, res) => {
+exports.getBrand = async (req, res) => { 
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -63,8 +64,8 @@ exports.postBrand = async (req, res) => {
         const existingRecord = existingResult.rows[0];
 
         // Process file uploads
-        const logo_url = req.files?.logo ? `/uploads/${path.basename(req.files.logo[0].path)}` : null;
-        const favicon_url = req.files?.favicon ? `/uploads/${path.basename(req.files.favicon[0].path)}` : null;
+        const logo_url = req.files?.logo ? `/branding-image/${path.basename(req.files.logo[0].path)}` : null;
+        const favicon_url = req.files?.favicon ? `/branding-image/${path.basename(req.files.favicon[0].path)}` : null;
 
         // Clean up old files if new ones are uploaded
         if (logo_url && existingRecord?.logo_url) {
@@ -120,8 +121,8 @@ exports.putBrand = async (req, res) => {
         const existingRecord = existingResult.rows[0];
         
         // Process file uploads
-        const logo_url = req.files?.logo ? `/uploads/${path.basename(req.files.logo[0].path)}` : null;
-        const favicon_url = req.files?.favicon ? `/uploads/${path.basename(req.files.favicon[0].path)}` : null;
+        const logo_url = req.files?.logo ? `/branding-image/${path.basename(req.files.logo[0].path)}` : null;
+        const favicon_url = req.files?.favicon ? `/branding-image/${path.basename(req.files.favicon[0].path)}` : null;
 
         // Clean up old files if new ones are uploaded
         if (logo_url && existingRecord.logo_url) {
