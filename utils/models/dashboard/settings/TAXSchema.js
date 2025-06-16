@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS gst_settings (
     id SERIAL PRIMARY KEY,
     legal_name VARCHAR(255) NOT NULL,
     gstin VARCHAR(15) NOT NULL UNIQUE,
-    business_type VARCHAR(50) NOT NULL,
+    business_type VARCHAR(50) NOT NULL, 
     state VARCHAR(255) NOT NULL,
     payment_terms JSONB DEFAULT '[]',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
