@@ -33,7 +33,7 @@ router.delete('/:id', deleteTaxSettings);
 // GST settings routes
 router.post('/gst', postGSTSettings);
 router.get('/gst', getGSTSettings);
-router.put('/gst/:id', putGSTSettings);
+router.put('/gst/:id', putGSTSettings); 
 router.delete('/gst/:id', deleteGSTSettings )
 
 // Add error handling middleware

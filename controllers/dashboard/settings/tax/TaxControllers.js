@@ -200,7 +200,7 @@ const deleteGSTSettings = async (req, res) => {
     const { id } = req.params;
     pool = await getPool(req.params.organizationId);
     client = await pool.connect();
-    await initializeSchema(client);
+    await initializeSchema(client); 
 
     const result = await client.query(
       'DELETE FROM gst_settings WHERE id = $1 RETURNING *',
