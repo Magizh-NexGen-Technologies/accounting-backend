@@ -41,7 +41,11 @@ exports.getBrand = async (req, res) => {
             settings.logo_url = `${req.protocol}://${req.get('host')}${settings.logo_url}`;
         }
         if (settings.favicon_url) {
-            settings.favicon_url = `${req.protocol}://${req.get('host')}${settings.favicon_url}`;
+            const protocol =
+                req.headers['x-forwarded-proto'] === 'https' || process.env.NODE_ENV === 'production'
+                    ? 'https'
+                    : req.protocol;
+            settings.favicon_url = `${protocol}://${req.get('host')}${settings.favicon_url}`;
         }
 
         res.json(settings);
@@ -91,7 +95,11 @@ exports.postBrand = async (req, res) => {
             settings.logo_url = `${req.protocol}://${req.get('host')}${settings.logo_url}`;
         }
         if (settings.favicon_url) {
-            settings.favicon_url = `${req.protocol}://${req.get('host')}${settings.favicon_url}`;
+            const protocol =
+                req.headers['x-forwarded-proto'] === 'https' || process.env.NODE_ENV === 'production'
+                    ? 'https'
+                    : req.protocol;
+            settings.favicon_url = `${protocol}://${req.get('host')}${settings.favicon_url}`;
         }
 
         res.json(settings);
@@ -152,7 +160,11 @@ exports.putBrand = async (req, res) => {
             settings.logo_url = `${req.protocol}://${req.get('host')}${settings.logo_url}`;
         }
         if (settings.favicon_url) {
-            settings.favicon_url = `${req.protocol}://${req.get('host')}${settings.favicon_url}`;
+            const protocol =
+                req.headers['x-forwarded-proto'] === 'https' || process.env.NODE_ENV === 'production'
+                    ? 'https'
+                    : req.protocol;
+            settings.favicon_url = `${protocol}://${req.get('host')}${settings.favicon_url}`;
         }
 
         res.json(settings);
